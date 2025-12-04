@@ -88,24 +88,24 @@ class BBSCookies(BaseModelWithSetter, BaseModelWithUpdate):
     >>> assert bbs_cookies.stuid == "456"
     >>> assert bbs_cookies.stoken == "abc"
     """
-    stuid: Optional[str]
+    stuid: Optional[str] = None
     """米游社UID"""
-    ltuid: Optional[str]
+    ltuid: Optional[str] = None
     """米游社UID"""
-    account_id: Optional[str]
+    account_id: Optional[str] = None
     """米游社UID"""
-    login_uid: Optional[str]
+    login_uid: Optional[str] = None
     """米游社UID"""
 
-    stoken_v1: Optional[str]
+    stoken_v1: Optional[str] = None
     """保存stoken_v1，方便后续使用"""
-    stoken_v2: Optional[str]
+    stoken_v2: Optional[str] = None
     """保存stoken_v2，方便后续使用"""
 
-    cookie_token: Optional[str]
-    login_ticket: Optional[str]
-    ltoken: Optional[str]
-    mid: Optional[str]
+    cookie_token: Optional[str] = None
+    login_ticket: Optional[str] = None
+    ltoken: Optional[str] = None
+    mid: Optional[str] = None
 
     def __init__(self, **data: Any):
         super().__init__(**data)
@@ -221,18 +221,18 @@ class UserAccount(BaseModelWithSetter):
     >>> user_account.bbs_uid = "123"
     >>> assert user_account.bbs_uid == "123"
     """
-    phone_number: Optional[str]
+    phone_number: Optional[str] = None
     """手机号"""
     cookies: BBSCookies
     """Cookies"""
-    address: Optional[Address]
+    address: Optional[Address] = None
     """收货地址"""
 
     device_id_ios: str
     """iOS设备用 deviceID"""
     device_id_android: str
     """安卓设备用 deviceID"""
-    device_fp: Optional[str]
+    device_fp: Optional[str] = None
     """iOS设备用 deviceFp"""
     enable_mission: bool = True
     '''是否开启米游币任务计划'''
@@ -295,11 +295,11 @@ class ExchangePlan(BaseModel):
 
     good: Good
     """商品"""
-    address: Optional[Address]
+    address: Optional[Address] = None
     """地址ID"""
     account: UserAccount
     """米游社账号"""
-    game_record: Optional[GameRecord]
+    game_record: Optional[GameRecord] = None
     """商品对应的游戏的玩家账号"""
 
     def __hash__(self):
@@ -375,7 +375,7 @@ class UserData(BaseModelWithSetter):
     """
     enable_notice: bool = True
     """是否开启通知"""
-    geetest_url: Optional[str]
+    geetest_url: Optional[str] = None
     '''极验Geetest人机验证打码接口URL'''
     geetest_params: Optional[Dict[str, Any]] = None
     '''极验Geetest人机验证打码API发送的参数（除gt，challenge外）'''
