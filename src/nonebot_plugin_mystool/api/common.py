@@ -329,11 +329,11 @@ class ApiResultHandler(BaseModel):
     """
     content: Dict[str, Any]
     """API返回的JSON对象序列化以后的Dict对象"""
-    data: Optional[Dict[str, Any]]
+    data: Optional[Dict[str, Any]] = None
     """API返回的数据体"""
-    message: Optional[str]
+    message: Optional[str] = None
     """API返回的消息内容"""
-    retcode: Optional[int]
+    retcode: Optional[int] = None
     """API返回的状态码"""
 
     def __init__(self, content: Dict[str, Any]):
