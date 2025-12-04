@@ -6,7 +6,8 @@ from typing import Union, Optional, Tuple, Any, Dict, TYPE_CHECKING
 
 import nonebot
 from nonebot.log import logger
-from pydantic import BaseModel, BaseSettings, validator
+from pydantic import BaseModel, Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ..model.common import data_path
 
@@ -74,7 +75,7 @@ class Preference(BaseModel):
     '''每次检查原神便笺间隔，单位为分钟'''
     global_geetest: bool = False
     '''是否使用插件配置的全局打码接口，而不是用户个人配置的打码接口，默认关闭'''
-    geetest_url: Optional[str]
+    geetest_url: Optional[str] = None
     '''极验Geetest人机验证打码接口URL'''
     geetest_params: Optional[Dict[str, Any]] = None
     '''极验Geetest人机验证打码API发送的参数（除gt，challenge外）'''
@@ -104,7 +105,7 @@ class Preference(BaseModel):
     qrcode_wait_time: float = 120
     """等待米游社登录二维码扫描的最长时间（单位：秒）"""
 
-    @validator("log_path", allow_reuse=True)
+    @field_validator("log_path")
     def _(cls, v: Optional[Path]):
         absolute_path = v.absolute()
         if not os.path.exists(absolute_path) or not os.path.isfile(absolute_path):
@@ -172,8 +173,7 @@ class SaltConfig(BaseModel):
     SALT_PROD: str = "JwYDpKvLj6MrMqqYU6jTKF17KNO2PXoS"
     '''PROD - 账号相关'''
 
-    class Config(Preference.Config):
-        pass
+    # v2 默认配置即可
 
 
 class DeviceConfig(BaseModel):
@@ -231,30 +231,32 @@ class DeviceConfig(BaseModel):
     UA_PLATFORM: str = "\"macOS\""
     '''Headers所用的 sec-ch-ua-platform'''
 
-    class Config(Preference.Config):
-        pass
+    # v2 默认配置即可
 
 
 class PluginConfig(BaseSettings):
-    preference = Preference()
-    good_list_image_config = GoodListImageConfig()
+    preference: Preference = Preference()
+    good_list_image_config: GoodListImageConfig = GoodListImageConfig()
 
 
 class PluginEnv(BaseSettings):
-    salt_config = SaltConfig()
-    device_config = DeviceConfig()
+    salt_config: SaltConfig = SaltConfig()
+    device_config: DeviceConfig = DeviceConfig()
 
-    class Config(BaseSettings.Config):
-        env_prefix = "mystool_"
-        env_file = '.env'
+    model_config = SettingsConfigDict(env_prefix="mystool_", env_file='.env', extra='ignore')
 
 
 if plugin_config_path.exists() and plugin_config_path.is_file():
-    plugin_config = PluginConfig.parse_file(plugin_config_path)
+    try:
+        text = plugin_config_path.read_text(encoding="utf-8")
+        plugin_config = PluginConfig.model_validate_json(text)
+    except Exception:
+        logger.exception(f"读取插件配置文件失败，请检查是否有权限读取 {plugin_config_path}")
+        raise
 else:
     plugin_config = PluginConfig()
     try:
-        str_data = plugin_config.json(indent=4)
+        str_data = plugin_config.model_dump_json(indent=4)
         plugin_config_path.parent.mkdir(parents=True, exist_ok=True)
         with open(plugin_config_path, "w", encoding="utf-8") as f:
             f.write(str_data)

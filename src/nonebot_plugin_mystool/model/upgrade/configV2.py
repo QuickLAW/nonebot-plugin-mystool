@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Union, Optional, Tuple, Any, Dict, TYPE_CHECKING
 
 from nonebot.log import logger
-from pydantic import BaseModel, BaseSettings, validator
+from pydantic import BaseModel, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ...model.common import data_path
 
@@ -72,7 +73,7 @@ class Preference(BaseModel):
     '''每日自动签到和米游社任务的定时任务执行时间，格式为HH:MM'''
     resin_interval: int = 60
     '''每次检查原神便笺间隔，单位为分钟'''
-    geetest_url: Optional[str]
+    geetest_url: Optional[str] = None
     '''极验Geetest人机验证打码接口URL'''
     geetest_params: Optional[Dict[str, Any]] = None
     '''极验Geetest人机验证打码API发送的参数（除gt，challenge外）'''
@@ -96,7 +97,7 @@ class Preference(BaseModel):
     admin_list_path: Optional[Path] = data_path / "admin_list.txt"
     """管理员名单文件路径"""
 
-    @validator("log_path", allow_reuse=True)
+    @field_validator("log_path")
     def _(cls, v: Optional[Path]):
         absolute_path = v.absolute()
         if not os.path.exists(absolute_path) or not os.path.isfile(absolute_path):
@@ -161,8 +162,7 @@ class SaltConfig(BaseModel):
     SALT_PROD: str = "JwYDpKvLj6MrMqqYU6jTKF17KNO2PXoS"
     '''PROD - 账号相关'''
 
-    class Config(Preference.Config):
-        pass
+    # v2 默认配置即可
 
 
 class DeviceConfig(BaseModel):
@@ -220,19 +220,16 @@ class DeviceConfig(BaseModel):
     UA_PLATFORM: str = "\"macOS\""
     '''Headers所用的 sec-ch-ua-platform'''
 
-    class Config(Preference.Config):
-        pass
+    # v2 默认配置即可
 
 
 class PluginConfig(BaseSettings):
-    preference = Preference()
-    good_list_image_config = GoodListImageConfig()
+    preference: Preference = Preference()
+    good_list_image_config: GoodListImageConfig = GoodListImageConfig()
 
 
 class PluginEnv(BaseSettings):
-    salt_config = SaltConfig()
-    device_config = DeviceConfig()
+    salt_config: SaltConfig = SaltConfig()
+    device_config: DeviceConfig = DeviceConfig()
 
-    class Config(BaseSettings.Config):
-        env_prefix = "mystool_"
-        env_file = '.env'
+    model_config = SettingsConfigDict(env_prefix="mystool_", env_file='.env', extra='ignore')

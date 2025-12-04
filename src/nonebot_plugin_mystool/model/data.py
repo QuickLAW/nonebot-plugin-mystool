@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 
 from httpx import Cookies
 from nonebot.log import logger
-from pydantic import BaseModel, ValidationError, validator, Field
+from pydantic import BaseModel, ValidationError, field_validator, Field
 
 from .._version import __version__
 from ..model.common import data_path, BaseModelWithSetter, Address, BaseModelWithUpdate, Good, GameRecord
@@ -174,7 +174,7 @@ class BBSCookies(BaseModelWithSetter, BaseModelWithUpdate):
              include: Optional[Union['AbstractSetIntStr', 'MappingIntStrAny']] = None,
              exclude: Optional[Union['AbstractSetIntStr', 'MappingIntStrAny']] = None,
              by_alias: bool = False,
-             skip_defaults: Optional[bool] = None, exclude_unset: bool = False, exclude_defaults: bool = False,
+             exclude_unset: bool = False, exclude_defaults: bool = False,
              exclude_none: bool = False, v2_stoken: bool = False,
              cookie_type: bool = False) -> 'DictStrAny':
         """
@@ -185,9 +185,9 @@ class BBSCookies(BaseModelWithSetter, BaseModelWithUpdate):
         """
         # 保证 stuid, ltuid 等字段存在
         self.bbs_uid = self.bbs_uid
-        cookies_dict = super().dict(include=include, exclude=exclude, by_alias=by_alias, skip_defaults=skip_defaults,
-                                    exclude_unset=exclude_unset, exclude_defaults=exclude_defaults,
-                                    exclude_none=exclude_none)
+        cookies_dict = super().model_dump(include=include, exclude=exclude, by_alias=by_alias,
+                                          exclude_unset=exclude_unset, exclude_defaults=exclude_defaults,
+                                          exclude_none=exclude_none)
         if v2_stoken and self.stoken_v2:
             cookies_dict["stoken"] = self.stoken_v2
         else:
@@ -325,7 +325,6 @@ class ExchangePlan(BaseModel):
             include: Optional[Union['AbstractSetIntStr', 'MappingIntStrAny']] = None,
             exclude: Optional[Union['AbstractSetIntStr', 'MappingIntStrAny']] = None,
             by_alias: bool = False,
-            skip_defaults: Optional[bool] = None,
             exclude_unset: bool = False,
             exclude_defaults: bool = False,
             exclude_none: bool = False,
@@ -333,9 +332,9 @@ class ExchangePlan(BaseModel):
         """
         重写 dict 方法，使其返回的 dict 可以被 hash
         """
-        normal_dict = super().dict(include=include, exclude=exclude, by_alias=by_alias, skip_defaults=skip_defaults,
-                                   exclude_unset=exclude_unset, exclude_defaults=exclude_defaults,
-                                   exclude_none=exclude_none)
+        normal_dict = super().model_dump(include=include, exclude=exclude, by_alias=by_alias,
+                                         exclude_unset=exclude_unset, exclude_defaults=exclude_defaults,
+                                         exclude_none=exclude_none)
         hashable_dict = ExchangePlan.CustomDict(normal_dict)
         hashable_dict._hash = hash(self)
         return hashable_dict
@@ -391,7 +390,7 @@ class UserData(BaseModelWithSetter):
     accounts: Dict[str, UserAccount] = {}
     """储存一些已绑定的账号数据"""
 
-    @validator("uuid")
+    @field_validator("uuid")
     def uuid_validator(cls, v):
         """
         验证UUID是否为合法的UUIDv4
@@ -408,7 +407,7 @@ class UserData(BaseModelWithSetter):
         exchange_plans = self.exchange_plans
         self.exchange_plans = set()
         for plan in exchange_plans:
-            plan = ExchangePlan.parse_obj(plan)
+            plan = ExchangePlan.model_validate(plan)
             self.exchange_plans.add(plan)
 
         if self.uuid is None:
@@ -463,9 +462,6 @@ class PluginData(BaseModel):
         super().__init__(**data)
         self.do_user_bind(write=True)
 
-    class Config:
-        json_encoders = UserAccount.Config.json_encoders
-
 
 class PluginDataManager:
     plugin_data: Optional[PluginData] = None
@@ -481,7 +477,7 @@ class PluginDataManager:
                 with open(plugin_data_path, "r") as f:
                     plugin_data_dict = json.load(f)
                 # 读取完整的插件数据
-                cls.plugin_data = PluginData.parse_obj(plugin_data_dict)
+                cls.plugin_data = PluginData.model_validate(plugin_data_dict)
             except (ValidationError, JSONDecodeError):
                 logger.exception(f"读取插件数据文件失败，请检查插件数据文件 {plugin_data_path} 格式是否正确")
                 raise
@@ -492,7 +488,7 @@ class PluginDataManager:
         else:
             cls.plugin_data = PluginData()
             try:
-                str_data = cls.plugin_data.json(indent=4)
+                str_data = cls.plugin_data.model_dump_json(indent=4)
                 plugin_data_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(plugin_data_path, "w", encoding="utf-8") as f:
                     f.write(str_data)
@@ -510,7 +506,7 @@ class PluginDataManager:
         :return: 是否成功
         """
         try:
-            str_data = cls.plugin_data.json(indent=4)
+            str_data = cls.plugin_data.model_dump_json(indent=4)
         except (AttributeError, TypeError, ValueError):
             logger.exception("数据对象序列化失败，可能是数据类型错误")
             return False

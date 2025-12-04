@@ -79,7 +79,7 @@ class BaseGameSign:
                                                timeout=plugin_config.preference.timeout)
                     award_list = []
                     for award in res.json()["data"]["awards"]:
-                        award_list.append(Award.parse_obj(award))
+                        award_list.append(Award.model_validate(award))
                     return BaseApiStatus(success=True), award_list
         except tenacity.RetryError as e:
             if is_incorrect_return(e):
@@ -123,7 +123,7 @@ class BaseGameSign:
                             f"获取签到数据 - 用户 {self.account.display_name} DS 校验失败")
                         logger.debug(f"网络请求返回: {res.text}")
                         return BaseApiStatus(invalid_ds=True), None
-                    return BaseApiStatus(success=True), GameSignInfo.parse_obj(api_result.data)
+                    return BaseApiStatus(success=True), GameSignInfo.model_validate(api_result.data)
         except tenacity.RetryError as e:
             if is_incorrect_return(e):
                 logger.exception(f"获取签到数据 - 服务器没有正确返回")
@@ -205,7 +205,7 @@ class BaseGameSign:
                         logger.warning(
                             f"{plugin_config.preference.log_head}游戏签到 - 用户 {self.account.display_name} 可能被人机验证阻拦")
                         logger.debug(f"{plugin_config.preference.log_head}网络请求返回: {res.text}")
-                        return BaseApiStatus(need_verify=True), MmtData.parse_obj(api_result.data)
+                        return BaseApiStatus(need_verify=True), MmtData.model_validate(api_result.data)
                     else:
                         logger.success(f"游戏签到 - 用户 {self.account.display_name} 签到成功")
                         logger.debug(f"网络请求返回: {res.text}")

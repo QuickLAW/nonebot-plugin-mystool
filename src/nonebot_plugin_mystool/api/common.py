@@ -406,7 +406,7 @@ async def get_game_record(account: UserAccount, retry: bool = True) -> Tuple[Bas
                     logger.debug(f"网络请求返回: {res.text}")
                     return BaseApiStatus(login_expired=True), None
                 return BaseApiStatus(success=True), list(
-                    map(GameRecord.parse_obj, api_result.data["list"]))
+                    map(GameRecord.model_validate, api_result.data["list"]))
     except tenacity.RetryError as e:
         if is_incorrect_return(e):
             logger.exception("获取用户游戏数据(GameRecord) - 服务器没有正确返回")
@@ -432,7 +432,7 @@ async def get_game_list(retry: bool = True) -> Tuple[BaseApiStatus, Optional[Lis
                     res = await client.get(URL_GAME_LIST, headers=headers, timeout=plugin_config.preference.timeout)
                 api_result = ApiResultHandler(res.json())
                 return BaseApiStatus(success=True), list(
-                    map(GameInfo.parse_obj, api_result.data["list"]))
+                    map(GameInfo.model_validate, api_result.data["list"]))
     except tenacity.RetryError as e:
         if is_incorrect_return(e):
             logger.exception("获取游戏信息(GameInfo) - 服务器没有正确返回")
@@ -585,7 +585,7 @@ async def get_good_detail(good: Union[Good, str], retry: bool = True) -> Tuple[G
                 if isinstance(good, Good):
                     return GetGoodDetailStatus(success=True), good.update(api_result.data)
                 else:
-                    return GetGoodDetailStatus(success=True), Good.parse_obj(api_result.data)
+                    return GetGoodDetailStatus(success=True), Good.model_validate(api_result.data)
     except tenacity.RetryError as e:
         if is_incorrect_return(e):
             logger.exception(f"米游币商品兑换 - 获取商品详细信息: 服务器没有正确返回")
@@ -645,7 +645,7 @@ async def get_good_list(game: str = "", retry: bool = True) -> Tuple[
                                                                 game=game), headers=HEADERS_GOOD_LIST,
                                            timeout=plugin_config.preference.timeout)
                 api_result = ApiResultHandler(res.json())
-                goods = map(Good.parse_obj, api_result.data["list"])
+                goods = map(Good.model_validate, api_result.data["list"])
                 # 判断是否已经读完所有商品
                 if not goods:
                     break
@@ -687,7 +687,7 @@ async def get_address(account: UserAccount, retry: bool = True) -> Tuple[BaseApi
                             f"获取地址数据 - 用户 {account.display_name} 登录失效")
                         logger.debug(f"网络请求返回: {res.text}")
                         return BaseApiStatus(login_expired=True), None
-                address_list = list(map(Address.parse_obj, api_result.data["list"]))
+                address_list = list(map(Address.model_validate, api_result.data["list"]))
     except tenacity.RetryError as e:
         if is_incorrect_return(e):
             logger.exception("获取地址数据 - 服务器没有正确返回")
@@ -793,7 +793,7 @@ async def create_mmt(client: Optional[httpx.AsyncClient] = None,
                     async with httpx.AsyncClient() as client:
                         res = await request()
                 api_result = ApiResultHandler(res.json())
-                return BaseApiStatus(success=True), MmtData.parse_obj(api_result.data["mmt_data"]), device_id, client
+                return BaseApiStatus(success=True), MmtData.model_validate(api_result.data["mmt_data"]), device_id, client
     except tenacity.RetryError as e:
         if client:
             await client.aclose()
@@ -831,7 +831,7 @@ async def create_mobile_captcha(phone_number: str,
         content = {
             "action_type": "login",
             "mmt_key": mmt_data.mmt_key,
-            "geetest_v4_data": geetest_result.dict(skip_defaults=True),
+            "geetest_v4_data": geetest_result.model_dump(exclude_defaults=True),
             "mobile": phone_number,
             "t": str(round(time.time() * 1000))
         }
@@ -947,7 +947,7 @@ async def get_login_ticket_by_captcha(phone_number: str,
                         res = await request()
                 api_result = ApiResultHandler(res.json())
                 if api_result.success:
-                    cookies = BBSCookies.parse_obj(dict_from_cookiejar(
+                    cookies = BBSCookies.model_validate(dict_from_cookiejar(
                         res.cookies.jar))
                     if not cookies.login_ticket:
                         return GetCookieStatus(missing_login_ticket=True), None
@@ -1048,7 +1048,7 @@ async def get_cookie_token_by_captcha(phone_number: str, captcha: int, retry: bo
                     logger.info(f"登录米哈游账号 - 验证码错误")
                     return GetCookieStatus(incorrect_captcha=True), None
                 else:
-                    cookies = BBSCookies.parse_obj(dict_from_cookiejar(res.cookies.jar))
+                    cookies = BBSCookies.model_validate(dict_from_cookiejar(res.cookies.jar))
                     if not cookies.cookie_token:
                         return GetCookieStatus(missing_cookie_token=True), None
                     elif not cookies.bbs_uid:
@@ -1100,7 +1100,7 @@ async def get_login_ticket_by_password(account: str, password: str, mmt_data: Mm
                         headers=headers,
                         timeout=plugin_config.preference.timeout
                     )
-                cookies = BBSCookies.parse_obj(dict_from_cookiejar(res.cookies.jar))
+                cookies = BBSCookies.model_validate(dict_from_cookiejar(res.cookies.jar))
                 api_result = ApiResultHandler(res.json())
                 if api_result.success:
                     return GetCookieStatus(success=True), cookies
@@ -1520,8 +1520,8 @@ async def genshin_note(account: UserAccount) -> Tuple[
                                 )
                             api_result = ApiResultHandler(res.json())
                             return GenshinNoteStatus(success=True), \
-                                GenshinNote.parse_obj(api_result.data)
-                        return GenshinNoteStatus(success=True), GenshinNote.parse_obj(api_result.data)
+                                GenshinNote.model_validate(api_result.data)
+                        return GenshinNoteStatus(success=True), GenshinNote.model_validate(api_result.data)
             except tenacity.RetryError as e:
                 if is_incorrect_return(e):
                     logger.exception(f"原神实时便笺: 服务器没有正确返回")
@@ -1585,7 +1585,7 @@ async def starrail_note(account: UserAccount) -> Tuple[
                             logger.info(
                                 f"崩铁实时便笺: 用户 {account.display_name} 可能被验证码阻拦")
                             logger.debug(f"网络请求返回: {res.text}")
-                        return StarRailNoteStatus(success=True), StarRailNote.parse_obj(api_result.data)
+                        return StarRailNoteStatus(success=True), StarRailNote.model_validate(api_result.data)
             except tenacity.RetryError as e:
                 if is_incorrect_return(e):
                     logger.exception("崩铁实时便笺: 服务器没有正确返回")
@@ -1625,7 +1625,7 @@ async def create_verification(
                         timeout=plugin_config.preference.timeout
                     )
                 api_result = ApiResultHandler(res.json())
-                return BaseApiStatus(success=True), MmtData.parse_obj(api_result.data)
+                return BaseApiStatus(success=True), MmtData.model_validate(api_result.data)
     except tenacity.RetryError as e:
         if is_incorrect_return(e):
             logger.exception("创建人机验证任务(create_verification) - 服务器没有正确返回")

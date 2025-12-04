@@ -481,7 +481,7 @@ async def get_missions(account: UserAccount, retry: bool = True) -> Tuple[BaseAp
                     return BaseApiStatus(login_expired=True), None
                 mission_list: List[MissionData] = []
                 for mission in api_result.data["missions"]:
-                    mission_list.append(MissionData.parse_obj(mission))
+                    mission_list.append(MissionData.model_validate(mission))
                 return BaseApiStatus(success=True), mission_list
     except tenacity.RetryError as e:
         if is_incorrect_return(e):

@@ -151,8 +151,8 @@ class NoteNoticeStatus(BaseModel):
     """
     账号便笺通知状态
     """
-    genshin = GenshinNoteNotice()
-    starrail = StarRailNoteNotice()
+    genshin: GenshinNoteNotice = GenshinNoteNotice()
+    starrail: StarRailNoteNotice = StarRailNoteNotice()
 
 
 note_notice_status: Dict[str, NoteNoticeStatus] = {}

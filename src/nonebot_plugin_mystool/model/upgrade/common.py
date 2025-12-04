@@ -1,7 +1,7 @@
 from typing import Union, Optional, Dict, TYPE_CHECKING
 
 from nonebot.log import logger
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 
 from ..._version import __version__
 from ...model.common import data_path
@@ -33,14 +33,18 @@ class PluginDataV1(BaseSettings):
     users: Dict[str, UserData] = {}
     '''所有用户数据'''
 
-    class Config:
-        json_encoders = UserAccount.Config.json_encoders
+    # v2 默认 JSON 编码即可
 
 
 def upgrade_plugin_data():
     if plugin_data_path_v1.exists() and plugin_data_path_v1.is_file():
         logger.warning("发现V1旧版插件数据文件（包含配置和插件数据），正在升级")
-        plugin_data_v1 = PluginDataV1.parse_file(plugin_data_path_v1, encoding="utf-8")
+        try:
+            text = plugin_data_path_v1.read_text(encoding="utf-8")
+            plugin_data_v1 = PluginDataV1.model_validate_json(text)
+        except Exception:
+            logger.exception(f"读取旧版插件数据文件失败，请检查是否有权限读取 {plugin_data_path_v1}")
+            return
 
         plugin_config_v2 = PluginConfig()
         plugin_config_v2.preference = plugin_data_v1.preference
@@ -60,21 +64,21 @@ def upgrade_plugin_data():
         plugin_env_text = ""
         plugin_env_text += "\n".join(
             map(
-                lambda x: f"{plugin_env.Config.env_prefix.upper()}"
+                lambda x: f"{plugin_env.model_config['env_prefix'].upper()}"
                           "SALT_CONFIG"
                           f"__{x}"
                           f"={plugin_env.salt_config.__getattribute__(x)}",
-                plugin_env.salt_config.__fields__.keys()
+                plugin_env.salt_config.model_fields.keys()
             )
         )
         plugin_env_text += "\n"
         plugin_env_text += "\n".join(
             map(
-                lambda x: f"{plugin_env.Config.env_prefix.upper()}"
+                lambda x: f"{plugin_env.model_config['env_prefix'].upper()}"
                           "DEVICE_CONFIG"
                           f"__{x}"
                           f"={plugin_env.device_config.__getattribute__(x)}",
-                plugin_env.device_config.__fields__.keys()
+                plugin_env.device_config.model_fields.keys()
             )
         )
         logger.warning(
@@ -93,7 +97,7 @@ def upgrade_plugin_data():
         write_success = True
 
         try:
-            str_data = plugin_config_v2.json(indent=4)
+            str_data = plugin_config_v2.model_dump_json(indent=4)
             with open(plugin_config_path, "w", encoding="utf-8") as f:
                 f.write(str_data)
         except (AttributeError, TypeError, ValueError, PermissionError):
@@ -101,7 +105,7 @@ def upgrade_plugin_data():
             write_success = False
 
         try:
-            str_data = plugin_data_v2.json(indent=4)
+            str_data = plugin_data_v2.model_dump_json(indent=4)
             with open(plugin_data_path, "w", encoding="utf-8") as f:
                 f.write(str_data)
         except (AttributeError, TypeError, ValueError, PermissionError):
