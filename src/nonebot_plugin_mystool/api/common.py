@@ -645,7 +645,15 @@ async def get_good_list(game: str = "", retry: bool = True) -> Tuple[
                                                                 game=game), headers=HEADERS_GOOD_LIST,
                                            timeout=plugin_config.preference.timeout)
                 api_result = ApiResultHandler(res.json())
-                goods = map(Good.model_validate, api_result.data["list"])
+                goods_data = api_result.data["list"]
+                goods = []
+                for data in goods_data:
+                    try:
+                        goods.append(Good.model_validate(data))
+                    except ValidationError as e:
+                        logger.warning(f"获取商品列表 - 解析商品数据失败: {e}\n数据: {data}")
+                        continue
+
                 # 判断是否已经读完所有商品
                 if not goods:
                     break
