@@ -7,7 +7,7 @@ from typing import List, Tuple
 import httpx
 from PIL import Image, ImageDraw, ImageFont
 
-from ..api.common import get_good_detail
+from ..api.mall import get_good_detail
 from ..model import Good, data_path, plugin_config
 from ..utils.common import get_file, logger, get_async_retry
 

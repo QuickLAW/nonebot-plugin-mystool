@@ -13,7 +13,10 @@ from nonebot.log import logger
 from pydantic import BaseModel, ValidationError, field_validator
 
 from ..._version import __version__
-from ...model.common import data_path, BaseModelWithSetter, Address, BaseModelWithUpdate, Good, GameRecord
+from ...model.config import data_path
+from ...model.base import BaseModelWithSetter, BaseModelWithUpdate
+from ...model.user import Address
+from ...model.game import Good, GameRecord
 
 if TYPE_CHECKING:
     IntStr = Union[int, str]

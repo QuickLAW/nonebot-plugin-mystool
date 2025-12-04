@@ -11,7 +11,7 @@ from nonebot.log import logger
 from pydantic import BaseModel, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from ...model.common import data_path
+from ...model.config import data_path
 
 if TYPE_CHECKING:
     IntStr = Union[int, str]

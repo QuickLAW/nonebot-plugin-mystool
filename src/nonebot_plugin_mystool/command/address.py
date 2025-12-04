@@ -6,7 +6,7 @@ from nonebot.internal.params import ArgStr
 from nonebot.matcher import Matcher
 from nonebot.params import T_State
 
-from ..api.common import get_address
+from ..api.user import get_address
 from ..command.common import CommandRegistry
 from ..model import CommandUsage
 from ..model import PluginDataManager, plugin_config, UserAccount

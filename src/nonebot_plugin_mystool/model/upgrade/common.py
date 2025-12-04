@@ -4,7 +4,7 @@ from nonebot.log import logger
 from pydantic_settings import BaseSettings
 
 from ..._version import __version__
-from ...model.common import data_path
+from ...model.config import data_path
 from ...model.upgrade.configV2 import Preference, SaltConfig, DeviceConfig, GoodListImageConfig, PluginConfig, \
     plugin_config_path, \
     PluginEnv

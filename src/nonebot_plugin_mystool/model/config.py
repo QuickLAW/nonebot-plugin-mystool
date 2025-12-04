@@ -9,7 +9,11 @@ from nonebot.log import logger
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from ..model.common import data_path
+root_path = Path(__name__).parent.absolute()
+'''NoneBot2 机器人根目录'''
+
+data_path = root_path / "data" / "nonebot-plugin-mystool"
+'''插件数据保存目录'''
 
 if TYPE_CHECKING:
     IntStr = Union[int, str]

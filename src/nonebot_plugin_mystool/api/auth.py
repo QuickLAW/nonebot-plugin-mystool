@@ -1,113 +1,137 @@
-
 import time
-from typing import Tuple, Optional, Union, Dict
-from urllib.parse import urlencode, urlparse, parse_qs
+import json
+from typing import Tuple, Optional, Dict, Union
+from urllib.parse import urlparse, parse_qs, urlencode
 
 import httpx
 import tenacity
 from requests.utils import dict_from_cookiejar
 
 from ..consts import (
-    HEADERS_WEBAPI, HEADERS_API_TAKUMI_PC, HEADERS_PASSPORT_API, HEADERS_BBS_API,
-    URL_REGISTRABLE, URL_CREATE_MMT, URL_CREATE_MOBILE_CAPTCHA,
-    URL_LOGIN_TICKET_BY_CAPTCHA, URL_MULTI_TOKEN_BY_LOGIN_TICKET,
-    URL_COOKIE_TOKEN_BY_CAPTCHA, URL_LOGIN_TICKET_BY_PASSWORD,
-    URL_COOKIE_TOKEN_BY_STOKEN, URL_STOKEN_V2_BY_V1, URL_LTOKEN_BY_STOKEN,
+    HEADERS_BBS_API, URL_CREATE_VERIFICATION, URL_VERIFY_VERIFICATION,
     URL_FETCH_GAME_TOKEN_QRCODE, URL_QUERY_GAME_TOKEN_QRCODE,
-    URL_GET_TOKEN_BY_GAME_TOKEN, URL_GET_COOKIE_TOKEN_BY_GAME_TOKEN
+    URL_GET_TOKEN_BY_GAME_TOKEN, URL_GET_COOKIE_TOKEN_BY_GAME_TOKEN,
+    URL_LTOKEN_BY_STOKEN, HEADERS_WEBAPI, URL_REGISTRABLE, URL_CREATE_MMT,
+    URL_CREATE_MOBILE_CAPTCHA, URL_LOGIN_TICKET_BY_CAPTCHA,
+    URL_MULTI_TOKEN_BY_LOGIN_TICKET, HEADERS_API_TAKUMI_PC,
+    URL_COOKIE_TOKEN_BY_CAPTCHA, URL_LOGIN_TICKET_BY_PASSWORD,
+    HEADERS_PASSPORT_API, URL_COOKIE_TOKEN_BY_STOKEN, URL_STOKEN_V2_BY_V1
 )
-from ..schema import (
-    BaseApiStatus, MmtData, GeetestResult, CreateMobileCaptchaStatus,
-    GetCookieStatus, BBSCookies, GeetestResultV4, QueryGameTokenQrCodeStatus
+from ..model import (
+    BaseApiStatus, MmtData, GeetestResult, UserAccount,
+    QueryGameTokenQrCodeStatus, BBSCookies, GetCookieStatus,
+    CreateMobileCaptchaStatus, GeetestResultV4, plugin_env
 )
 from ..utils import (
-    logger, generate_device_id, get_async_retry, generate_ds, IncorrectReturn
+    logger, get_async_retry, generate_device_id, generate_ds, generate_fp_locally,
+    generate_seed_id
 )
 from ..config import plugin_config
-from .base import ApiResultHandler, is_incorrect_return
+from .base import ApiResultHandler, is_incorrect_return, IncorrectReturn
+
 
 async def check_registrable(phone_number: int, keep_client: bool = False, retry: bool = True) -> Tuple[
-    BaseApiStatus, Optional[bool], str, Optional[httpx.AsyncClient]
+    BaseApiStatus,
+    Optional[bool],
+    str,
+    Optional[httpx.AsyncClient]
 ]:
+    """
+    检查用户是否可以注册
+
+    :param keep_client: httpx.AsyncClient 连接是否需要关闭
+    :param phone_number: 手机号
+    :param retry: 是否允许重试
+    :return: (API返回状态, 用户是否可以注册, 设备ID, httpx.AsyncClient连接对象)
+    """
     headers = HEADERS_WEBAPI.copy()
     device_id = generate_device_id()
     headers["x-rpc-device_id"] = device_id
 
-    async def request(client):
+    async def request():
+        """
+        发送请求的闭包函数
+        """
         time_now = round(time.time() * 1000)
         return await client.get(URL_REGISTRABLE.format(mobile=phone_number, t=time_now),
                                 headers=headers, timeout=plugin_config.preference.timeout)
 
-    client = None
     try:
         async for attempt in get_async_retry(retry):
             with attempt:
                 if keep_client:
                     client = httpx.AsyncClient()
                 else:
-                    async with httpx.AsyncClient() as client_ctx:
-                        client = client_ctx # This logic in original was slightly different but intention is clear
-                        # Actually original: if keep_client: client = httpx.AsyncClient() else: async with ...
-                        # The original code had a bug/weirdness where it assigned client inside async with but then called request() outside?
-                        # No, inside async with it called request().
-                        pass
-                
-                # Let's rewrite properly
-                if keep_client:
-                    if not client: client = httpx.AsyncClient()
-                    res = await request(client)
-                else:
-                    async with httpx.AsyncClient() as c:
-                        res = await request(c)
-                
+                    async with httpx.AsyncClient() as client:
+                        res = await request()
+                res = await request()
                 api_result = ApiResultHandler(res.json())
                 return BaseApiStatus(success=True), bool(api_result.data["is_registable"]), device_id, client
     except tenacity.RetryError as e:
-        if client and keep_client:
+        if keep_client:
             await client.aclose()
         if is_incorrect_return(e):
             logger.exception(f"检查用户 {phone_number} 是否可以注册 - 服务器没有正确返回")
+            logger.debug(f"网络请求返回: {res.text}")
             return BaseApiStatus(incorrect_return=True), None, device_id, client
         else:
             logger.exception(f"检查用户 {phone_number} 是否可以注册 - 请求失败")
             return BaseApiStatus(network_error=True), None, device_id, None
 
+
 async def create_mmt(client: Optional[httpx.AsyncClient] = None,
                      use_v4: bool = True,
                      device_id: str = None,
                      retry: bool = True) -> Tuple[
-    BaseApiStatus, Optional[MmtData], str, Optional[httpx.AsyncClient]
+    BaseApiStatus,
+    Optional[MmtData],
+    str,
+    Optional[httpx.AsyncClient]
 ]:
+    """
+    发送短信验证前所需的人机验证任务申请
+
+    :param client: httpx.AsyncClient 连接
+    :param use_v4: 是否使用极验第四代人机验证
+    :param device_id: 设备 ID
+    :param retry: 是否允许重试
+    :return: (API返回状态, 人机验证任务数据, 设备ID, httpx.AsyncClient连接对象)
+    """
     headers = HEADERS_WEBAPI.copy()
     device_id = device_id or generate_device_id()
     headers["x-rpc-device_id"] = device_id
     if use_v4:
         headers.setdefault("x-rpc-source", "accountWebsite")
 
-    async def request(c):
+    async def request():
+        """
+        发送请求的闭包函数
+        """
         time_now = round(time.time() * 1000)
-        return await c.get(URL_CREATE_MMT.format(now=time_now, t=time_now),
+        return await client.get(URL_CREATE_MMT.format(now=time_now, t=time_now),
                                 headers=headers, timeout=plugin_config.preference.timeout)
 
     try:
         async for attempt in get_async_retry(retry):
             with attempt:
                 if client:
-                    res = await request(client)
+                    res = await request()
                 else:
-                    async with httpx.AsyncClient() as c:
-                        res = await request(c)
+                    async with httpx.AsyncClient() as client:
+                        res = await request()
                 api_result = ApiResultHandler(res.json())
                 return BaseApiStatus(success=True), MmtData.model_validate(api_result.data["mmt_data"]), device_id, client
     except tenacity.RetryError as e:
-        if client and not client.is_closed:
+        if client:
             await client.aclose()
         if is_incorrect_return(e):
             logger.exception("获取短信验证-人机验证任务(create_mmt) - 服务器没有正确返回")
+            logger.debug(f"网络请求返回: {res.text}")
             return BaseApiStatus(incorrect_return=True), None, device_id, client
         else:
             logger.exception("获取短信验证-人机验证任务(create_mmt) - 请求失败")
             return BaseApiStatus(network_error=True), None, device_id, None
+
 
 async def create_mobile_captcha(phone_number: str,
                                 mmt_data: MmtData,
@@ -117,9 +141,19 @@ async def create_mobile_captcha(phone_number: str,
                                 device_id: str = None,
                                 retry: bool = True
                                 ) -> Tuple[CreateMobileCaptchaStatus, Optional[httpx.AsyncClient]]:
+    """
+    发送短信验证码，可尝试不传入 geetest_result，即不进行人机验证
+
+    :param phone_number: 手机号
+    :param mmt_data: 人机验证任务数据
+    :param geetest_result: 人机验证结果数据
+    :param client: httpx.AsyncClient 连接
+    :param use_v4: 是否使用极验第四代人机验证
+    :param device_id: 设备ID
+    :param retry: 是否允许重试
+    """
     headers = HEADERS_WEBAPI.copy()
     headers["x-rpc-device_id"] = device_id or generate_device_id()
-    
     if use_v4 and isinstance(geetest_result, GeetestResultV4):
         content = {
             "action_type": "login",
@@ -146,8 +180,11 @@ async def create_mobile_captcha(phone_number: str,
             "t": round(time.time() * 1000)
         }
 
-    async def request(c):
-        return await c.post(URL_CREATE_MOBILE_CAPTCHA,
+    async def request():
+        """
+        发送请求的闭包函数
+        """
+        return await client.post(URL_CREATE_MOBILE_CAPTCHA,
                                  params=content,
                                  headers=headers,
                                  timeout=plugin_config.preference.timeout)
@@ -156,10 +193,10 @@ async def create_mobile_captcha(phone_number: str,
         async for attempt in get_async_retry(retry):
             with attempt:
                 if client and not client.is_closed:
-                    res = await request(client)
+                    res = await request()
                 else:
-                    async with httpx.AsyncClient() as c:
-                        res = await request(c)
+                    async with httpx.AsyncClient() as client:
+                        res = await request()
                 api_result = ApiResultHandler(res.json())
                 if api_result.success:
                     return CreateMobileCaptchaStatus(success=True), client
@@ -178,17 +215,30 @@ async def create_mobile_captcha(phone_number: str,
             await client.aclose()
         if is_incorrect_return(e):
             logger.exception("发送短信验证码 - 服务器没有正确返回")
+            logger.debug(f"网络请求返回: {res.text}")
             return CreateMobileCaptchaStatus(incorrect_return=True), client
         else:
             logger.exception("发送短信验证码 - 请求失败")
             return CreateMobileCaptchaStatus(network_error=True), None
+
 
 async def get_login_ticket_by_captcha(phone_number: str,
                                       captcha: int,
                                       device_id: str = None,
                                       client: Optional[httpx.AsyncClient] = None,
                                       retry: bool = True) -> \
-        Tuple[GetCookieStatus, Optional[BBSCookies]]:
+        Tuple[
+            GetCookieStatus, Optional[BBSCookies]]:
+    """
+    通过短信验证码获取 login_ticket
+
+    :param phone_number: 手机号
+    :param captcha: 短信验证码
+    :param device_id: 设备ID
+    :param client: httpx.AsyncClient 连接
+    :param retry: 是否允许重试
+    """
+
     headers = HEADERS_WEBAPI.copy()
     headers["x-rpc-device_id"] = device_id or generate_device_id()
     params = {
@@ -199,8 +249,11 @@ async def get_login_ticket_by_captcha(phone_number: str,
     }
     encoded_params = urlencode(params)
 
-    async def request(c):
-        return await c.post(URL_LOGIN_TICKET_BY_CAPTCHA,
+    async def request():
+        """
+        发送请求的闭包函数
+        """
+        return await client.post(URL_LOGIN_TICKET_BY_CAPTCHA,
                                  headers=headers,
                                  content=encoded_params,
                                  timeout=plugin_config.preference.timeout
@@ -210,10 +263,10 @@ async def get_login_ticket_by_captcha(phone_number: str,
         async for attempt in get_async_retry(retry):
             with attempt:
                 if client is not None:
-                    res = await request(client)
+                    res = await request()
                 else:
-                    async with httpx.AsyncClient() as c:
-                        res = await request(c)
+                    async with httpx.AsyncClient() as client:
+                        res = await request()
                 api_result = ApiResultHandler(res.json())
                 if api_result.success:
                     cookies = BBSCookies.model_validate(dict_from_cookiejar(
@@ -225,22 +278,31 @@ async def get_login_ticket_by_captcha(phone_number: str,
                             await client.aclose()
                         return GetCookieStatus(success=True), cookies
                 elif api_result.wrong_captcha:
-                    logger.info("通过短信验证码获取 login_ticket - 验证码错误，但你可以再次尝试登录")
+                    logger.info(
+                        "通过短信验证码获取 login_ticket - 验证码错误，但你可以再次尝试登录")
                     return GetCookieStatus(incorrect_captcha=True), None
                 else:
                     raise IncorrectReturn
     except tenacity.RetryError as e:
         if is_incorrect_return(e):
             logger.exception(f"通过短信验证码获取 login_ticket: 服务器没有正确返回")
+            logger.debug(f"网络请求返回: {res.text}")
             return GetCookieStatus(incorrect_return=True), None
         else:
-            logger.exception(f"通过短信验证码获取 login_ticket: 请求失败")
+            logger.exception(f"通过短信验证码获取 login_ticket: 网络请求失败")
             return GetCookieStatus(network_error=True), None
+
 
 async def get_multi_token_by_login_ticket(cookies: BBSCookies, retry: bool = True) -> Tuple[
     GetCookieStatus,
     Optional[BBSCookies]
 ]:
+    """
+    通过 login_ticket 获取 `stoken 和 ltoken
+
+    :param cookies: 米游社Cookies，需要包含 login_ticket 和 bbs_uid
+    :param retry: 是否允许重试
+    """
     if not cookies.login_ticket:
         return GetCookieStatus(missing_login_ticket=True), None
     elif not cookies.bbs_uid:
@@ -266,15 +328,24 @@ async def get_multi_token_by_login_ticket(cookies: BBSCookies, retry: bool = Tru
     except tenacity.RetryError as e:
         if is_incorrect_return(e):
             logger.exception(f"通过 login_ticket 获取 stoken: 服务器没有正确返回")
+            logger.debug(f"网络请求返回: {res.text}")
             return GetCookieStatus(incorrect_return=True), None
         else:
             logger.exception(f"通过 login_ticket 获取 stoken: 网络请求失败")
             return GetCookieStatus(network_error=True), None
 
+
 async def get_cookie_token_by_captcha(phone_number: str, captcha: int, retry: bool = True) -> Tuple[
     GetCookieStatus,
     Optional[BBSCookies]
 ]:
+    """
+    通过短信验证码获取 cookie_token
+
+    :param phone_number: 手机号
+    :param captcha: 验证码
+    :param retry: 是否允许重试
+    """
     try:
         async for attempt in get_async_retry(retry):
             with attempt:
@@ -305,13 +376,24 @@ async def get_cookie_token_by_captcha(phone_number: str, captcha: int, retry: bo
     except tenacity.RetryError as e:
         if is_incorrect_return(e):
             logger.exception(f"通过短信验证码获取 cookie_token: 服务器没有正确返回")
+            logger.debug(f"网络请求返回: {res.text}")
             return GetCookieStatus(incorrect_return=True), None
         else:
             logger.exception(f"通过短信验证码获取 cookie_token: 网络请求失败")
             return GetCookieStatus(network_error=True), None
 
+
 async def get_login_ticket_by_password(account: str, password: str, mmt_data: MmtData, geetest_result: GeetestResult,
                                        retry: bool = True) -> Tuple[GetCookieStatus, Optional[BBSCookies]]:
+    """
+    使用密码登录获取login_ticket
+
+    :param account: 账号
+    :param password: 密码
+    :param mmt_data: GEETEST验证任务数据
+    :param geetest_result: GEETEST验证结果数据
+    :param retry: 是否允许重试
+    """
     headers = HEADERS_WEBAPI.copy()
     headers["x-rpc-device_id"] = generate_device_id()
     params = {
@@ -346,15 +428,24 @@ async def get_login_ticket_by_password(account: str, password: str, mmt_data: Mm
     except tenacity.RetryError as e:
         if is_incorrect_return(e):
             logger.exception(f"使用密码登录获取login_ticket - 服务器没有正确返回")
+            logger.debug(f"网络请求返回: {res.text}")
             return GetCookieStatus(incorrect_return=True), None
         else:
             logger.exception("使用密码登录获取login_ticket - 请求失败")
             return GetCookieStatus(network_error=True), None
 
+
 async def get_cookie_token_by_stoken(cookies: BBSCookies, device_id: str = None, retry: bool = True) -> Tuple[
     GetCookieStatus,
     Optional[BBSCookies]
 ]:
+    """
+    通过 stoken_v2 获取 cookie_token
+
+    :param cookies: 米游社Cookies，需要包含 stoken_v2 和 mid
+    :param device_id: X_RPC_DEVICE_ID
+    :param retry: 是否允许重试
+    """
     headers = HEADERS_PASSPORT_API.copy()
     headers["x-rpc-device_id"] = device_id if device_id else generate_device_id()
     if not cookies.stoken_v2:
@@ -384,15 +475,24 @@ async def get_cookie_token_by_stoken(cookies: BBSCookies, device_id: str = None,
     except tenacity.RetryError as e:
         if is_incorrect_return(e):
             logger.exception("通过 stoken 获取 cookie_token: 服务器没有正确返回")
+            logger.debug(f"网络请求返回: {res.text}")
             return GetCookieStatus(incorrect_return=True), None
         else:
             logger.exception("通过 stoken 获取 cookie_token: 网络请求失败")
             return GetCookieStatus(network_error=True), None
 
+
 async def get_stoken_v2_by_v1(cookies: BBSCookies, device_id: str = None, retry: bool = True) -> Tuple[
     GetCookieStatus,
     Optional[BBSCookies]
 ]:
+    """
+    通过 stoken_v1 获取 stoken_v2 以及 mid
+
+    :param cookies: 米游社Cookies，需要包含 stoken_v1
+    :param device_id: X_RPC_DEVICE_ID
+    :param retry: 是否允许重试
+    """
     headers = HEADERS_PASSPORT_API.copy()
     headers["x-rpc-device_id"] = device_id or generate_device_id()
     headers.setdefault("x-rpc-aigis", "")
@@ -404,7 +504,7 @@ async def get_stoken_v2_by_v1(cookies: BBSCookies, device_id: str = None, retry:
         async for attempt in get_async_retry(retry):
             with attempt:
                 async with httpx.AsyncClient() as client:
-                    headers.setdefault("DS", generate_ds(salt=plugin_config.salt_config.SALT_PROD))
+                    headers.setdefault("DS", generate_ds(salt=plugin_env.salt_config.SALT_PROD))
                     res = await client.post(
                         URL_STOKEN_V2_BY_V1,
                         cookies={"stoken": cookies.stoken_v1, "stuid": cookies.bbs_uid},
@@ -427,15 +527,24 @@ async def get_stoken_v2_by_v1(cookies: BBSCookies, device_id: str = None, retry:
     except tenacity.RetryError as e:
         if is_incorrect_return(e):
             logger.exception("通过 stoken_v1 获取 stoken_v2: 服务器没有正确返回")
+            logger.debug(f"网络请求返回: {res.text}")
             return GetCookieStatus(incorrect_return=True), None
         else:
             logger.exception("通过 stoken_v1 获取 stoken_v2: 网络请求失败")
             return GetCookieStatus(network_error=True), None
 
+
 async def get_ltoken_by_stoken(cookies: BBSCookies, device_id: str = None, retry: bool = True) -> Tuple[
     GetCookieStatus,
     Optional[BBSCookies]
 ]:
+    """
+    通过 stoken_v2 和 mid 获取 ltoken
+
+    :param cookies: 米游社Cookies，需要包含 stoken_v2 和 mid
+    :param device_id: X_RPC_DEVICE_ID
+    :param retry: 是否允许重试
+    """
     headers = HEADERS_PASSPORT_API.copy()
     headers["x-rpc-device_id"] = device_id if device_id else generate_device_id()
     if not cookies.stoken_v2:
@@ -465,16 +574,109 @@ async def get_ltoken_by_stoken(cookies: BBSCookies, device_id: str = None, retry
     except tenacity.RetryError as e:
         if is_incorrect_return(e):
             logger.exception("通过 stoken 获取 ltoken: 服务器没有正确返回")
+            logger.debug(f"网络请求返回: {res.text}")
             return GetCookieStatus(incorrect_return=True), None
         else:
             logger.exception("通过 stoken 获取 ltoken: 网络请求失败")
             return GetCookieStatus(network_error=True), None
+
+
+async def create_verification(
+        account: UserAccount = None,
+        retry: bool = True
+) -> Tuple[BaseApiStatus, Optional[MmtData]]:
+    """
+    创建人机验证任务 - 一般用于米游社讨论区签到
+    :param account: 用户账户数据
+    :param retry: 是否允许重试
+    """
+    headers = HEADERS_BBS_API.copy()
+    try:
+        async for attempt in get_async_retry(retry):
+            with attempt:
+                device_id = account.device_id_ios if account else generate_device_id()
+                headers["x-rpc-device_id"] = device_id
+                headers["x-rpc-device_fp"] = account.device_fp if account and account.device_fp else \
+                    generate_fp_locally()
+                headers["DS"] = generate_ds()
+                async with httpx.AsyncClient() as client:
+                    res = await client.get(
+                        URL_CREATE_VERIFICATION,
+                        headers=headers,
+                        cookies=account.cookies.dict(v2_stoken=True, cookie_type=True),
+                        timeout=plugin_config.preference.timeout
+                    )
+                api_result = ApiResultHandler(res.json())
+                return BaseApiStatus(success=True), MmtData.model_validate(api_result.data)
+    except tenacity.RetryError as e:
+        if is_incorrect_return(e):
+            logger.exception("创建人机验证任务(create_verification) - 服务器没有正确返回")
+            return BaseApiStatus(incorrect_return=True), None
+        else:
+            logger.exception("创建人机验证任务(create_verification) - 请求失败")
+            return BaseApiStatus(network_error=True), None
+
+
+async def verify_verification(
+        mmt_data: MmtData,
+        geetest_result: GeetestResult,
+        account: UserAccount = None,
+        retry: bool = True
+) -> BaseApiStatus:
+    """
+    提交人机验证结果 - 一般用于米游社讨论区签到
+    :param mmt_data: 极验验证任务数据
+    :param geetest_result: 极验验证结果
+    :param account: 用户账户数据
+    :param retry: 是否允许重试
+    """
+    headers = HEADERS_BBS_API.copy()
+    try:
+        async for attempt in get_async_retry(retry):
+            with attempt:
+                content = {
+                    "geetest_seccode": geetest_result.seccode,
+                    "geetest_challenge": mmt_data.challenge,
+                    "geetest_validate": geetest_result.validate,
+                }
+                device_id = account.device_id_ios if account else generate_device_id()
+                headers["x-rpc-device_id"] = device_id
+                headers["x-rpc-device_fp"] = account.device_fp if account and account.device_fp else \
+                    generate_fp_locally()
+                headers["DS"] = generate_ds()
+                async with httpx.AsyncClient() as client:
+                    res = await client.post(
+                        URL_VERIFY_VERIFICATION,
+                        headers=headers,
+                        cookies=account.cookies.dict(v2_stoken=True, cookie_type=True),
+                        json=content,
+                        timeout=plugin_config.preference.timeout)
+                api_result = ApiResultHandler(res.json())
+                if api_result.retcode == 0:
+                    return BaseApiStatus(success=True)
+                else:
+                    return BaseApiStatus()
+    except tenacity.RetryError as e:
+        if is_incorrect_return(e):
+            logger.exception("验证人机验证结果(verify_verification) - 服务器没有正确返回")
+            return BaseApiStatus(incorrect_return=True)
+        else:
+            logger.exception("验证人机验证结果(verify_verification) - 请求失败")
+            return BaseApiStatus(network_error=True)
+
 
 async def fetch_game_token_qrcode(
         device_id: str,
         app_id: str,
         retry: bool = True
 ) -> Tuple[BaseApiStatus, Optional[Tuple[str, str]]]:
+    """
+    获取米游社扫码登录（GameToken）二维码
+    :param device_id: 设备ID
+    :param app_id: 登录的应用标识符
+    :param retry: 是否允许重试
+    :return 其中 ``Tuple[str, str]`` 为二维码URL和用于查询二维码扫描状态的 ``token``
+    """
     try:
         async for attempt in get_async_retry(retry):
             with attempt:
@@ -504,12 +706,21 @@ async def fetch_game_token_qrcode(
             logger.exception("获取米游社扫码登录(fetch_game_token_qrcode) - 请求失败")
             return BaseApiStatus(network_error=True), None
 
+
 async def query_game_token_qrcode(
         ticket: str,
         device_id: str,
         app_id: str = "1",
         retry: bool = True
 ) -> Tuple[QueryGameTokenQrCodeStatus, Optional[Tuple[str, str]]]:
+    """
+    查询米游社扫码登录（GameToken）二维码扫描状态
+    :param ticket: 生成二维码时返回的 URL 参数中 ``ticket`` 字段的值
+    :param device_id: 设备ID
+    :param app_id: 登录的应用标识符
+    :param retry: 是否允许重试
+    :return 其中 ``Tuple[str, str]`` 为米游社账号ID和 GameToken
+    """
     try:
         async for attempt in get_async_retry(retry):
             with attempt:
@@ -532,7 +743,6 @@ async def query_game_token_qrcode(
                         return QueryGameTokenQrCodeStatus(qrcode_scanned=True), None
                     else:
                         payload_raw = api_result.data["payload"]["raw"]
-                        import json
                         parsed_payload: Dict[str, str] = json.loads(payload_raw)
                         return QueryGameTokenQrCodeStatus(success=True), (
                             parsed_payload["uid"],
@@ -550,11 +760,18 @@ async def query_game_token_qrcode(
             logger.exception("查询米游社扫码登录(query_game_token_qrcode) - 请求失败")
             return QueryGameTokenQrCodeStatus(network_error=True), None
 
+
 async def get_token_by_game_token(
         bbs_uid: str,
         game_token: str,
         retry: bool = True
 ) -> Tuple[BaseApiStatus, Optional[BBSCookies]]:
+    """
+    通过 GameToken 获取 STokenV2 和 mid
+    :param bbs_uid: 米游社账号 UID
+    :param game_token: 有效的 GameToken
+    :param retry: 是否允许重试
+    """
     try:
         async for attempt in get_async_retry(retry):
             with attempt:
@@ -585,11 +802,18 @@ async def get_token_by_game_token(
             logger.exception("通过 GameToken 获取 SToken(get_token_by_game_token) - 请求失败")
             return BaseApiStatus(network_error=True), None
 
+
 async def get_cookie_token_by_game_token(
         bbs_uid: str,
         game_token: str,
         retry: bool = True
 ) -> Tuple[BaseApiStatus, Optional[BBSCookies]]:
+    """
+    通过 GameToken 获取 CookieToken
+    :param bbs_uid: 米游社账号 UID
+    :param game_token: 有效的 GameToken
+    :param retry: 是否允许重试
+    """
     try:
         async for attempt in get_async_retry(retry):
             with attempt:

@@ -4,10 +4,10 @@ from typing import List, Optional, Tuple, Type, Dict
 import httpx
 import tenacity
 
-from ..api.common import ApiResultHandler, is_incorrect_return, create_verification, \
-    verify_verification
-from ..model import BaseApiStatus, MissionStatus, MissionData, \
+from ..model import ApiResultHandler, BaseApiStatus, MissionStatus, MissionData, \
     MissionState, UserAccount, plugin_config, plugin_env, UserData
+from ..api.base import is_incorrect_return
+from ..api.auth import create_verification, verify_verification
 from ..utils import logger, generate_ds, \
     get_async_retry, get_validate
 

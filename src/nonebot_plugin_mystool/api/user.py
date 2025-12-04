@@ -10,14 +10,14 @@ from ..consts import (
     URL_GAME_RECORD, URL_GAME_LIST, URL_MYB, URL_DEVICE_LOGIN, URL_DEVICE_SAVE,
     URL_ADDRESS, URL_GET_DEVICE_FP
 )
-from ..schema import (
+from ..model import (
     BaseApiStatus, GameRecord, GameInfo, UserAccount, Address, GetFpStatus
 )
 from ..utils import (
-    logger, get_async_retry, generate_ds, generate_device_id, generate_seed_id, generate_fp_locally, IncorrectReturn
+    logger, get_async_retry, generate_ds, generate_device_id, generate_seed_id, generate_fp_locally
 )
 from ..config import plugin_config
-from .base import ApiResultHandler, is_incorrect_return
+from .base import ApiResultHandler, is_incorrect_return, IncorrectReturn
 
 async def get_game_record(account: UserAccount, retry: bool = True) -> Tuple[BaseApiStatus, Optional[List[GameRecord]]]:
     try:

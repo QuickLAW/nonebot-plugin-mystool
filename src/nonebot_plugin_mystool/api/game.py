@@ -11,13 +11,13 @@ from ..consts import (
     URL_STARRAIL_NOTE_WIDGET, URL_SIGN_REWARD, URL_SIGN_INFO, URL_SIGN_SIGN,
     HEADERS_SIGN_REWARD
 )
-from ..schema import (
+from ..model import (
     GameRecord, BaseApiStatus, Award, GameSignInfo, GeetestResult, MmtData, UserAccount,
     GenshinNoteStatus, GenshinNote, StarRailNoteStatus, StarRailNote
 )
-from ..utils import logger, generate_ds, get_async_retry, generate_fp_locally, IncorrectReturn
+from ..utils import logger, generate_ds, get_async_retry, generate_fp_locally
 from ..config import plugin_config
-from .base import ApiResultHandler, is_incorrect_return
+from .base import ApiResultHandler, is_incorrect_return, IncorrectReturn
 from .user import device_login, device_save, get_game_record, get_game_list
 
 class BaseGameSign:

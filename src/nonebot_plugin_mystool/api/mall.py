@@ -1,117 +1,117 @@
-from typing import Optional, List, Tuple, Union
 
-import httpx
-import tenacity
-from pydantic import ValidationError
-
-from ..consts import HEADERS_CHECK_GOOD, HEADERS_GOOD_LIST, URL_CHECK_GOOD, URL_GOOD_LIST
-from ..model import Good, BaseApiStatus, GetGoodDetailStatus, ApiResultHandler
-from ..utils import logger, get_async_retry, is_incorrect_return
-from ..config import plugin_config
-
-async def get_good_detail(good: Union[Good, str], retry: bool = True) -> Tuple[GetGoodDetailStatus, Optional[Good]]:
+async def good_exchange(plan: ExchangePlan) -> Tuple[ExchangeStatus, Optional[ExchangeResult]]:
     """
-    获取某商品的详细信息
+    执行米游币商品兑换
 
-    :param good: 商品对象 / 商品ID，如果指定为商品对象，则会更新商品对象的数据并返回其引用
-    :param retry: 是否允许重试
-    :return: 商品数据
+    :param plan: 兑换计划
     """
-    good_id = good.goods_id if isinstance(good, Good) else good
+    headers = HEADERS_EXCHANGE.copy()
+    headers["x-rpc-device_id"] = plan.account.device_id_ios
+    headers["x-rpc-device_fp"] = plan.account.device_fp or generate_fp_locally()
+    content = {
+        "app_id": 1,
+        "point_sn": "myb",
+        "goods_id": plan.good.goods_id,
+        "exchange_num": 1
+    }
+    if plan.address is not None:
+        content.setdefault("address_id", plan.address.id)
+    if plan.game_record is not None:
+        content.setdefault("uid", plan.game_record.game_role_id)
+        # 例: cn_gf01
+        content.setdefault("region", plan.game_record.region)
+        # 例: hk4e_cn
+        content.setdefault("game_biz", plan.good.game_biz)
+    start_time = 0
     try:
-        async for attempt in get_async_retry(retry):
-            with attempt:
-                async with httpx.AsyncClient() as client:
-                    res = await client.get(URL_CHECK_GOOD.format(good_id), timeout=plugin_config.preference.timeout)
-                api_result = ApiResultHandler(res.json())
-                # -2109 商品不存在；-2105 商品已下架
-                if api_result.retcode == -2109 or api_result.message == -2105:
-                    return GetGoodDetailStatus(good_not_existed=True), None
-                if isinstance(good, Good):
-                    return GetGoodDetailStatus(success=True), good.update(api_result.data)
-                else:
-                    return GetGoodDetailStatus(success=True), Good.model_validate(api_result.data)
-    except tenacity.RetryError as e:
-        if is_incorrect_return(e):
-            logger.exception(f"米游币商品兑换 - 获取商品详细信息: 服务器没有正确返回")
+        start_time = time.time()
+        async with httpx.AsyncClient() as client:
+            res = await client.post(
+                URL_EXCHANGE, headers=headers, json=content,
+                cookies=plan.account.cookies.dict(cookie_type=True),
+                timeout=plugin_config.preference.timeout)
+        api_result = ApiResultHandler(res.json())
+        if api_result.login_expired:
+            logger.info(
+                f"米游币商品兑换 - 执行兑换: 用户 {plan.account.display_name} 登录失效 - 请求发送时间: {start_time}")
             logger.debug(f"网络请求返回: {res.text}")
-            return GetGoodDetailStatus(incorrect_return=True), None
+            return ExchangeStatus(login_expired=True), None
+        if api_result.success:
+            logger.info(
+                f"米游币商品兑换: 用户 {plan.account.display_name} 商品 {plan.good.goods_id} 兑换成功！可以自行确认 - 请求发送时间: {start_time}")
+            logger.debug(f"网络请求返回: {res.text}")
+            return ExchangeStatus(success=True), ExchangeResult(result=True, return_data=res.json(), plan=plan)
         else:
-            logger.exception(f"米游币商品兑换 - 获取商品详细信息: 网络请求失败")
-            return GetGoodDetailStatus(network_error=True), None
+            logger.info(
+                f"米游币商品兑换: 用户 {plan.account.display_name} 商品 {plan.good.goods_id} 兑换失败，可以自行确认 - 请求发送时间: {start_time}")
+            logger.debug(f"网络请求返回: {res.text}")
+            return ExchangeStatus(success=True), ExchangeResult(result=False, return_data=res.json(), plan=plan)
+    except Exception as e:
+        if is_incorrect_return(e):
+            logger.error(
+                f"米游币商品兑换: 用户 {plan.account.display_name} 商品 {plan.good.goods_id} 服务器没有正确返回 - 请求发送时间: {start_time}")
+            logger.debug(f"网络请求返回: {res.text}")
+            return ExchangeStatus(incorrect_return=True), None
+        else:
+            logger.exception(
+                f"米游币商品兑换: 用户 {plan.account.display_name} 商品 {plan.good.goods_id} 请求失败 - 请求发送时间: {start_time}")
+            return ExchangeStatus(network_error=True), None
 
 
-async def get_good_games(retry: bool = True) -> Tuple[BaseApiStatus, Optional[List[Tuple[str, str]]]]:
+def good_exchange_sync(plan: ExchangePlan) -> Tuple[ExchangeStatus, Optional[ExchangeResult]]:
     """
-    获取商品分区列表
+    执行米游币商品兑换
 
-    :param retry: 是否允许重试
-    :return: (商品分区全名, 字母简称) 的列表
+    :param plan: 兑换计划
     """
+    headers = HEADERS_EXCHANGE.copy()
+    headers["x-rpc-device_id"] = plan.account.device_id_ios
+    headers["x-rpc-device_fp"] = plan.account.device_fp or generate_fp_locally()
+    content = {
+        "app_id": 1,
+        "point_sn": "myb",
+        "goods_id": plan.good.goods_id,
+        "exchange_num": 1
+    }
+    if plan.address is not None:
+        content.setdefault("address_id", plan.address.id)
+    if plan.game_record is not None:
+        content.setdefault("uid", plan.game_record.game_role_id)
+        # 例: cn_gf01
+        content.setdefault("region", plan.game_record.region)
+        # 例: hk4e_cn
+        content.setdefault("game_biz", plan.good.game_biz)
+    start_time = 0
     try:
-        async for attempt in get_async_retry(retry):
-            with attempt:
-                async with httpx.AsyncClient() as client:
-                    res = await client.get(URL_GOOD_LIST.format(page=1,
-                                                                game=""),
-                                           headers=HEADERS_GOOD_LIST,
-                                           timeout=plugin_config.preference.timeout)
-                api_result = ApiResultHandler(res.json())
-                return BaseApiStatus(success=True), list(map(lambda x: (x["name"], x["key"]), api_result.data["games"]))
-    except tenacity.RetryError as e:
-        if is_incorrect_return(e):
-            logger.exception(f"米游币商品兑换 - 获取商品列表: 服务器没有正确返回")
+        start_time = time.time()
+        with httpx.Client() as client:
+            res = client.post(
+                URL_EXCHANGE, headers=headers, json=content,
+                cookies=plan.account.cookies.dict(cookie_type=True),
+                timeout=plugin_config.preference.timeout)
+        api_result = ApiResultHandler(res.json())
+        if api_result.login_expired:
+            logger.info(
+                f"米游币商品兑换 - 执行兑换: 用户 {plan.account.display_name} 登录失效 - 请求发送时间: {start_time}")
             logger.debug(f"网络请求返回: {res.text}")
-            return BaseApiStatus(incorrect_return=True), None
-        else:
-            logger.exception("米游币商品兑换 - 获取商品列表: 网络请求失败")
-            return BaseApiStatus(network_error=True), None
-
-
-async def get_good_list(game: str = "", retry: bool = True) -> Tuple[
-    BaseApiStatus,
-    Optional[List[Good]]
-]:
-    """
-    获取商品信息列表
-
-    :param game: 游戏简称（默认为空，即获取所有游戏的商品）
-    :param retry: 是否允许重试
-    :return: 商品信息列表
-    """
-    good_list = []
-    page = 1
-
-    try:
-        async for attempt in get_async_retry(retry):
-            with attempt:
-                async with httpx.AsyncClient() as client:
-                    res = await client.get(URL_GOOD_LIST.format(page=page,
-                                                                game=game), headers=HEADERS_GOOD_LIST,
-                                           timeout=plugin_config.preference.timeout)
-                api_result = ApiResultHandler(res.json())
-                goods_data = api_result.data["list"]
-                goods = []
-                for data in goods_data:
-                    try:
-                        goods.append(Good.model_validate(data))
-                    except ValidationError as e:
-                        logger.warning(f"获取商品列表 - 解析商品数据失败: {e}\n数据: {data}")
-                        continue
-
-                # 判断是否已经读完所有商品
-                if not goods:
-                    break
-                else:
-                    good_list += goods
-                page += 1
-    except tenacity.RetryError as e:
-        if is_incorrect_return(e):
-            logger.exception("获取商品信息列表 - 获取商品列表: 服务器没有正确返回")
+            return ExchangeStatus(login_expired=True), None
+        if api_result.success:
+            logger.info(
+                f"米游币商品兑换: 用户 {plan.account.display_name} 商品 {plan.good.goods_id} 兑换成功！可以自行确认 - 请求发送时间: {start_time}")
             logger.debug(f"网络请求返回: {res.text}")
-            return BaseApiStatus(incorrect_return=True), None
+            return ExchangeStatus(success=True), ExchangeResult(result=True, return_data=res.json(), plan=plan)
         else:
-            logger.exception("获取商品信息列表 - 获取商品列表: 网络请求失败")
-            return BaseApiStatus(network_error=True), None
-
-    return BaseApiStatus(success=True), good_list
+            logger.info(
+                f"米游币商品兑换: 用户 {plan.account.display_name} 商品 {plan.good.goods_id} 兑换失败，可以自行确认 - 请求发送时间: {start_time}")
+            logger.debug(f"网络请求返回: {res.text}")
+            return ExchangeStatus(success=True), ExchangeResult(result=False, return_data=res.json(), plan=plan)
+    except Exception as e:
+        if is_incorrect_return(e):
+            logger.error(
+                f"米游币商品兑换: 用户 {plan.account.display_name} 商品 {plan.good.goods_id} 服务器没有正确返回 - 请求发送时间: {start_time}")
+            logger.debug(f"网络请求返回: {res.text}")
+            return ExchangeStatus(incorrect_return=True), None
+        else:
+            logger.exception(
+                f"米游币商品兑换: 用户 {plan.account.display_name} 商品 {plan.good.goods_id} 请求失败 - 请求发送时间: {start_time}")
+            return ExchangeStatus(network_error=True), None

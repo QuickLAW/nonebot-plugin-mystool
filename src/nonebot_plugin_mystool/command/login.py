@@ -12,9 +12,10 @@ from nonebot.internal.matcher import Matcher
 from nonebot.internal.params import ArgStr
 from nonebot.params import T_State
 
-from ..api.common import get_ltoken_by_stoken, get_cookie_token_by_stoken, get_device_fp, fetch_game_token_qrcode, \
+from ..api.auth import get_ltoken_by_stoken, get_cookie_token_by_stoken, fetch_game_token_qrcode, \
     query_game_token_qrcode, \
     get_token_by_game_token, get_cookie_token_by_game_token
+from ..api.user import get_device_fp
 from ..command.common import CommandRegistry
 from ..model import PluginDataManager, plugin_config, UserAccount, UserData, CommandUsage, BBSCookies, \
     QueryGameTokenQrCodeStatus, GetCookieStatus

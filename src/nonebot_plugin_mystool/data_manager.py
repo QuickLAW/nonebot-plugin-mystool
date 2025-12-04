@@ -5,7 +5,7 @@ from pydantic import ValidationError
 from nonebot.log import logger
 
 from .config import DATA_PATH
-from .schema import PluginData
+from .model import PluginData
 
 PLUGIN_DATA_PATH = DATA_PATH / "dataV2.json"
 
