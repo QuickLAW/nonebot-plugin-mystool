@@ -77,7 +77,7 @@ class Good(BaseModelWithUpdate):
     """为 1 时商品只有在指定时间开放兑换；为 0 时商品任何时间均可兑换"""
     next_time: Optional[int]
     """为 0 表示任何时间均可兑换或兑换已结束"""
-    status: Optional[Literal["online", "not_in_sell"]]
+    status: Optional[str]
     sale_start_time: Optional[int]
     time_by_detail: Optional[int]
     next_num: Optional[int]
