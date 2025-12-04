@@ -75,30 +75,30 @@ class Good(BaseModelWithUpdate):
     """
     type: int
     """为 1 时商品只有在指定时间开放兑换；为 0 时商品任何时间均可兑换"""
-    next_time: Optional[int]
+    next_time: Optional[int] = None
     """为 0 表示任何时间均可兑换或兑换已结束"""
-    status: Optional[str]
-    sale_start_time: Optional[int]
-    time_by_detail: Optional[int]
-    next_num: Optional[int]
+    status: Optional[str] = None
+    sale_start_time: Optional[int] = None
+    time_by_detail: Optional[int] = None
+    next_num: Optional[int] = None
     account_exchange_num: int
     """已经兑换次数"""
     account_cycle_limit: int
     """最多可兑换次数"""
     account_cycle_type: str
     """限购类型 Literal["forever", "month", "not_limit"]"""
-    game_biz: Optional[str]
+    game_biz: Optional[str] = None
     """商品对应的游戏区服（如 hk4e_cn）（单独查询一个商品时）"""
-    game: Optional[str]
+    game: Optional[str] = None
     """商品对应的游戏"""
-    unlimit: Optional[bool]
+    unlimit: Optional[bool] = None
     """是否为不限量商品"""
 
     # 以下为实际会用到的属性
 
-    name: Optional[str]
+    name: Optional[str] = None
     """商品名称（单独查询一个商品时）"""
-    goods_name: Optional[str]
+    goods_name: Optional[str] = None
     """商品名称（查询商品列表时）"""
 
     goods_id: str
