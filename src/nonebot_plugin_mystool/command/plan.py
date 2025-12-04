@@ -18,7 +18,8 @@ from pydantic import BaseModel
 
 from ..api import BaseGameSign
 from ..api import BaseMission, get_missions_state
-from ..api.common import genshin_note, get_game_record, starrail_note
+from ..api.common import get_game_record
+from ..api.game import genshin_note, starrail_note
 from ..command.common import CommandRegistry
 from ..command.exchange import generate_image
 from ..model import (MissionStatus, PluginDataManager, plugin_config, UserData, CommandUsage, GenshinNoteNotice,
